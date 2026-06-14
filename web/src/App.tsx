@@ -109,7 +109,14 @@ export function App() {
         <p>Who's using this device?</p>
         <div className="quick-replies">
           {SEED_USERS.map((u) => (
-            <button key={u.id} className="chip big" onClick={() => setMe(u)}>
+            <button
+              key={u.id}
+              className="chip big"
+              onClick={() => {
+                ringRef.current?.unlock(); // unlock audio within this user gesture
+                setMe(u);
+              }}
+            >
               {u.avatar} {u.name}
             </button>
           ))}

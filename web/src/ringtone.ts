@@ -9,16 +9,39 @@ export class Ringtone {
   private interval: ReturnType<typeof setInterval> | null = null;
   private playing = false;
 
+  private ensureCtx(): AudioContext {
+    this.ctx =
+      this.ctx ??
+      new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext)();
+    return this.ctx;
+  }
+
+  // Call this from a real user gesture (e.g. the login click) to "unlock" audio
+  // so the ring can later play when a call arrives over the network — at which
+  // point there is no gesture and the browser would otherwise block sound.
+  async unlock(): Promise<void> {
+    try {
+      const ctx = this.ensureCtx();
+      if (ctx.state === "suspended") await ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // silent — just activates the context
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.01);
+    } catch {
+      /* best effort */
+    }
+  }
+
   async start(): Promise<void> {
     if (this.playing) return;
     this.playing = true;
     try {
-      this.ctx =
-        this.ctx ??
-        new (window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext })
-            .webkitAudioContext)();
-      if (this.ctx.state === "suspended") await this.ctx.resume();
+      const ctx = this.ensureCtx();
+      if (ctx.state === "suspended") await ctx.resume();
     } catch {
       this.playing = false;
       return;
