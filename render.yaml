@@ -6,10 +6,11 @@ services:
     name: inform-alert
     runtime: node
     plan: free # free tier supports WebSockets; spins down when idle (the client auto-reconnects)
-    buildCommand: npm install && npm run build
+    # --include=dev forces devDependencies (vite, typescript, tsx) to install even
+    # though they're needed only at build time — without this the build has no tools.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # PORT is provided automatically by Render; the server reads process.env.PORT.
+    # NODE_ENV is intentionally NOT set to "production" here: Render applies env vars
+    # during the build too, and NODE_ENV=production makes npm skip devDependencies,
+    # breaking the build. PORT is provided automatically and read via process.env.PORT.
