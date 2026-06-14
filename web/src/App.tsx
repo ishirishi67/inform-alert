@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { connectWs } from "./ws";
 import { PeerCall } from "./webrtc";
+import { Ringtone } from "./ringtone";
 import { BusyReply } from "./components/BusyReply";
 import { CallScreen } from "./components/CallScreen";
 import type { CallType, IncomingCall, Message, User } from "./types";
 
 type WsClient = ReturnType<typeof connectWs>;
-type ActiveCall = { id: string; peer: User; type: CallType };
+type ActiveCall = { id: string; peer: User; type: CallType; outgoing: boolean };
 
 // The three seeded family members (CLAUDE.md §3). "Login" = pick who you are.
 const SEED_USERS: User[] = [
@@ -33,6 +34,8 @@ export function App() {
   const [connState, setConnState] = useState<RTCPeerConnectionState>("new");
   const callRef = useRef<PeerCall | null>(null);
   const ws = useRef<WsClient | null>(null);
+  const ringRef = useRef<Ringtone | null>(null);
+  if (!ringRef.current) ringRef.current = new Ringtone();
 
   const teardownCall = () => {
     callRef.current?.close();
@@ -75,8 +78,23 @@ export function App() {
     return () => {
       client.close();
       teardownCall();
+      ringRef.current?.stop();
     };
   }, [me]);
+
+  // Ring: loop while a call is incoming (callee) or while the caller waits for
+  // the callee to connect. Stops as soon as connected, dismissed, or ended.
+  useEffect(() => {
+    const ring = ringRef.current!;
+    const shouldRing =
+      !!incoming || (!!call && call.outgoing && connState !== "connected");
+    if (shouldRing) {
+      ring.start();
+      if (incoming) navigator.vibrate?.([500, 300, 500]); // buzz on mobile
+    } else {
+      ring.stop();
+    }
+  }, [incoming, call, connState]);
 
   // Load thread when switching conversations.
   useEffect(() => {
@@ -116,7 +134,7 @@ export function App() {
       const pc = newPeerCall(callee.id, c.id);
       callRef.current = pc;
       setLocalStream(await pc.startLocalMedia(type === "video"));
-      setCall({ id: c.id, peer: callee, type });
+      setCall({ id: c.id, peer: callee, type, outgoing: true });
       ws.current?.send("call:invite", {
         callId: c.id,
         calleeId: callee.id,
@@ -136,7 +154,7 @@ export function App() {
       const pc = newPeerCall(inc.caller.id, inc.callId);
       callRef.current = pc;
       setLocalStream(await pc.startLocalMedia(inc.callType === "video"));
-      setCall({ id: inc.callId, peer: inc.caller, type: inc.callType });
+      setCall({ id: inc.callId, peer: inc.caller, type: inc.callType, outgoing: false });
       // Tell the caller we accepted; they will send the offer.
       ws.current?.send("call:accept", {
         callId: inc.callId,
