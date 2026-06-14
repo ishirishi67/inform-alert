@@ -14,3 +14,12 @@ services:
     # NODE_ENV is intentionally NOT set to "production" here: Render applies env vars
     # during the build too, and NODE_ENV=production makes npm skip devDependencies,
     # breaking the build. PORT is provided automatically and read via process.env.PORT.
+    envVars:
+      # Web Push signing keys. sync:false = set the values in the Render dashboard
+      # (Environment tab), NOT in this file — the private key must stay secret and
+      # out of the (public) repo. Stable keys keep push subscriptions valid across
+      # the free tier's sleep/restart cycles.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

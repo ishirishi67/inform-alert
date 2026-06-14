@@ -2,10 +2,22 @@
 // CALLER'S IDENTITY (resolved server-side from the account) so the callee always
 // sees who is really calling — the core product principle (CLAUDE.md §2).
 import type { WebSocketServer, WebSocket } from "ws";
-import { getUser } from "./store.js";
+import { calls, getUser } from "./store.js";
+import { sendPush } from "./push.js";
 
 type Client = { userId: string; socket: WebSocket };
 const clients = new Map<string, Client>(); // userId -> connection
+
+// Keep the Call record's status in step with the live signaling so a handled
+// call isn't replayed as "ringing" when the callee reconnects.
+function markCall(callId: string, status: (typeof calls)[number]["status"]) {
+  const call = calls.find((c) => c.id === callId);
+  if (call) {
+    call.status = status;
+    if (["dismissed_busy", "ended", "missed"].includes(status))
+      call.endedAt = call.endedAt ?? Date.now();
+  }
+}
 
 export function send(userId: string, type: string, payload: unknown) {
   const c = clients.get(userId);
@@ -33,6 +45,25 @@ export function attachWs(wss: WebSocketServer) {
     clients.set(userId, { userId, socket });
     broadcastPresence();
 
+    // If a call is still ringing for this user (e.g. they just opened the app
+    // from a push notification), replay the incoming call so they can answer it.
+    const now = Date.now();
+    for (const c of calls) {
+      if (
+        c.calleeId === userId &&
+        c.status === "ringing" &&
+        now - c.startedAt < 60_000
+      ) {
+        const caller = getUser(c.callerId);
+        if (caller)
+          send(userId, "call:incoming", {
+            callId: c.id,
+            callType: c.type,
+            caller: { id: caller.id, name: caller.name, avatar: caller.avatar },
+          });
+      }
+    }
+
     socket.on("message", (raw) => {
       let msg: { type: string; payload?: any };
       try {
@@ -46,20 +77,31 @@ export function attachWs(wss: WebSocketServer) {
       // server's view of the connection — never trust the client's claim.
       if (type === "call:invite") {
         const caller = getUser(userId)!;
-        send(payload.calleeId, "call:incoming", {
+        const incoming = {
           callId: payload.callId,
           callType: payload.callType,
           // identity travels with the call:
           caller: { id: caller.id, name: caller.name, avatar: caller.avatar },
+        };
+        send(payload.calleeId, "call:incoming", incoming);
+        // Also push a system notification so the callee is alerted even when
+        // they're not on the site (browser running in the background).
+        void sendPush(payload.calleeId, {
+          title: `${caller.avatar} ${caller.name} is calling…`,
+          body: payload.callType === "video" ? "Video call" : "Voice call",
+          url: "/",
         });
       } else if (type === "call:accept") {
+        markCall(payload.callId, "accepted");
         send(payload.toUserId, "call:accepted", { callId: payload.callId });
       } else if (type === "call:dismiss") {
+        markCall(payload.callId, "dismissed_busy");
         send(payload.toUserId, "call:dismissed", {
           callId: payload.callId,
           reason: payload.reason ?? "busy",
         });
       } else if (type === "call:hangup") {
+        markCall(payload.callId, "ended");
         send(payload.toUserId, "call:ended", { callId: payload.callId });
       } else if (
         // WebRTC media negotiation — relay SDP offer/answer + ICE candidates

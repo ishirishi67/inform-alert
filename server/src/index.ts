@@ -20,6 +20,9 @@ import {
 } from "./store.js";
 import type { CallbackReminder } from "./types.js";
 import { attachWs, send } from "./ws.js";
+import { addSubscription, getPublicKey, initPush } from "./push.js";
+
+initPush();
 
 const app = express();
 app.use(cors());
@@ -126,6 +129,17 @@ app.post("/api/reminders", (req, res) => {
   }, wait);
 
   res.json({ reminder });
+});
+
+// --- Web Push (notify even when the app isn't open) -----------------------
+app.get("/api/push/public-key", (_req, res) => res.json({ key: getPublicKey() }));
+
+app.post("/api/push/subscribe", (req, res) => {
+  const { userId, subscription } = req.body ?? {};
+  if (!getUser(userId) || !subscription?.endpoint)
+    return res.status(400).json({ error: "bad subscription" });
+  addSubscription(userId, subscription);
+  res.json({ ok: true });
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, users }));

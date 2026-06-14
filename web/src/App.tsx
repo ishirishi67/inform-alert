@@ -3,6 +3,7 @@ import { api } from "./api";
 import { connectWs } from "./ws";
 import { PeerCall } from "./webrtc";
 import { Ringtone } from "./ringtone";
+import { setupPush } from "./push";
 import { BusyReply } from "./components/BusyReply";
 import { CallScreen } from "./components/CallScreen";
 import type { CallType, IncomingCall, Message, User } from "./types";
@@ -114,6 +115,7 @@ export function App() {
               className="chip big"
               onClick={() => {
                 ringRef.current?.unlock(); // unlock audio within this user gesture
+                setupPush(u.id); // register SW + ask notification permission
                 setMe(u);
               }}
             >
