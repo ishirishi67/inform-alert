@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { connectWs } from "./ws";
+import { PeerCall } from "./webrtc";
 import { BusyReply } from "./components/BusyReply";
-import type { IncomingCall, Message, User } from "./types";
+import { CallScreen } from "./components/CallScreen";
+import type { CallType, IncomingCall, Message, User } from "./types";
 
 type WsClient = ReturnType<typeof connectWs>;
+type ActiveCall = { id: string; peer: User; type: CallType };
 
 // The three seeded family members (CLAUDE.md §3). "Login" = pick who you are.
 const SEED_USERS: User[] = [
@@ -20,10 +23,25 @@ export function App() {
   const [active, setActive] = useState<User | null>(null); // who I'm chatting with
   const [messages, setMessages] = useState<Message[]>([]);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
-  const [inCall, setInCall] = useState<IncomingCall | User | null>(null);
   const [busyFor, setBusyFor] = useState<IncomingCall | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Active call + live media state
+  const [call, setCall] = useState<ActiveCall | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [connState, setConnState] = useState<RTCPeerConnectionState>("new");
+  const callRef = useRef<PeerCall | null>(null);
   const ws = useRef<WsClient | null>(null);
+
+  const teardownCall = () => {
+    callRef.current?.close();
+    callRef.current = null;
+    setCall(null);
+    setLocalStream(null);
+    setRemoteStream(null);
+    setConnState("new");
+  };
 
   // --- Connect after login -------------------------------------------------
   useEffect(() => {
@@ -32,18 +50,32 @@ export function App() {
     const client = connectWs(me.id, (type, payload) => {
       if (type === "presence") setOnline(payload.online);
       else if (type === "call:incoming") setIncoming(payload);
-      else if (type === "call:accepted") setToast("Call connected");
+      // Callee accepted → caller now creates and sends the WebRTC offer.
+      else if (type === "call:accepted") callRef.current?.createOffer();
       else if (type === "call:dismissed") {
-        setInCall(null);
+        teardownCall();
         setToast(`Call dismissed (${payload.reason})`);
       }
+      // The other person hung up → tear down and inform this side.
+      else if (type === "call:ended") {
+        teardownCall();
+        setToast("Call ended");
+      } else if (type === "webrtc:offer")
+        callRef.current?.handleOffer(payload.sdp);
+      else if (type === "webrtc:answer")
+        callRef.current?.handleAnswer(payload.sdp);
+      else if (type === "webrtc:ice")
+        callRef.current?.handleIce(payload.candidate);
       else if (type === "message:new")
         setMessages((m) => [...m, payload as Message]);
       else if (type === "reminder:callback")
         setToast(`⏰ Time to call ${payload.callBack?.name ?? "back"}`);
     });
     ws.current = client;
-    return () => client.close();
+    return () => {
+      client.close();
+      teardownCall();
+    };
   }, [me]);
 
   // Load thread when switching conversations.
@@ -69,25 +101,56 @@ export function App() {
     );
   }
 
-  const startCall = async (callee: User, type: "voice" | "video") => {
-    const { call } = await api.createCall(me.id, callee.id, type);
-    ws.current?.send("call:invite", {
-      callId: call.id,
-      calleeId: callee.id,
-      callType: type,
-    });
-    setInCall(callee);
-    setToast(`Calling ${callee.name}…`);
+  const newPeerCall = (peerId: string, callId: string) =>
+    new PeerCall(
+      (t, p) => ws.current?.send(t, p),
+      peerId,
+      callId,
+      (s) => setRemoteStream(s),
+      (st) => setConnState(st)
+    );
+
+  const startCall = async (callee: User, type: CallType) => {
+    try {
+      const { call: c } = await api.createCall(me.id, callee.id, type);
+      const pc = newPeerCall(callee.id, c.id);
+      callRef.current = pc;
+      setLocalStream(await pc.startLocalMedia(type === "video"));
+      setCall({ id: c.id, peer: callee, type });
+      ws.current?.send("call:invite", {
+        callId: c.id,
+        calleeId: callee.id,
+        callType: type,
+      });
+    } catch {
+      teardownCall();
+      setToast("Couldn't access your microphone / camera");
+    }
   };
 
-  const acceptIncoming = () => {
+  const acceptIncoming = async () => {
     if (!incoming) return;
-    ws.current?.send("call:accept", {
-      callId: incoming.callId,
-      toUserId: incoming.caller.id,
-    });
-    setInCall(incoming);
+    const inc = incoming;
     setIncoming(null);
+    try {
+      const pc = newPeerCall(inc.caller.id, inc.callId);
+      callRef.current = pc;
+      setLocalStream(await pc.startLocalMedia(inc.callType === "video"));
+      setCall({ id: inc.callId, peer: inc.caller, type: inc.callType });
+      // Tell the caller we accepted; they will send the offer.
+      ws.current?.send("call:accept", {
+        callId: inc.callId,
+        toUserId: inc.caller.id,
+      });
+    } catch {
+      teardownCall();
+      ws.current?.send("call:dismiss", {
+        callId: inc.callId,
+        toUserId: inc.caller.id,
+        reason: "no-media",
+      });
+      setToast("Couldn't access your microphone / camera");
+    }
   };
 
   const dismissBusy = () => {
@@ -101,6 +164,16 @@ export function App() {
     setIncoming(null);
   };
 
+  // Hang up: notify the other side, then tear down locally.
+  const endCall = () => {
+    if (call)
+      ws.current?.send("call:hangup", {
+        callId: call.id,
+        toUserId: call.peer.id,
+      });
+    teardownCall();
+  };
+
   const send = async (body: string) => {
     if (!active || !body.trim()) return;
     const { message } = await api.sendMessage(me.id, active.id, body, "text");
@@ -110,8 +183,12 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <span>{me.avatar} {me.name}</span>
-        <button className="link" onClick={() => setMe(null)}>Switch</button>
+        <span>
+          {me.avatar} {me.name}
+        </span>
+        <button className="link" onClick={() => setMe(null)}>
+          Switch
+        </button>
       </header>
 
       <main>
@@ -126,8 +203,24 @@ export function App() {
               <span className={`dot ${online.includes(u.id) ? "on" : ""}`} />
               {u.avatar} {u.name}
               <span className="actions">
-                <button onClick={(e) => { e.stopPropagation(); startCall(u, "voice"); }}>📞</button>
-                <button onClick={(e) => { e.stopPropagation(); startCall(u, "video"); }}>🎥</button>
+                <button
+                  title="Voice call"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startCall(u, "voice");
+                  }}
+                >
+                  📞
+                </button>
+                <button
+                  title="Video call"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startCall(u, "video");
+                  }}
+                >
+                  🎥
+                </button>
               </span>
             </div>
           ))}
@@ -150,8 +243,12 @@ export function App() {
             <h2>{incoming.caller.name} is calling…</h2>
             <p>{incoming.callType === "video" ? "Video call" : "Voice call"}</p>
             <div className="row center">
-              <button className="accept" onClick={acceptIncoming}>Accept</button>
-              <button className="busy" onClick={dismissBusy}>Busy</button>
+              <button className="accept" onClick={acceptIncoming}>
+                Accept
+              </button>
+              <button className="busy" onClick={dismissBusy}>
+                Busy
+              </button>
             </div>
           </div>
         </div>
@@ -164,19 +261,17 @@ export function App() {
         </div>
       )}
 
-      {/* In-call placeholder — real A/V via managed WebRTC provider later */}
-      {inCall && (
+      {/* Live WebRTC call */}
+      {call && (
         <div className="modal">
-          <div className="ring">
-            <div className="avatar-big">
-              {"caller" in inCall ? inCall.caller.avatar : inCall.avatar}
-            </div>
-            <h2>
-              {"caller" in inCall ? inCall.caller.name : inCall.name}
-            </h2>
-            <p className="muted">Media stream stubbed (WebRTC provider TODO)</p>
-            <button className="busy" onClick={() => setInCall(null)}>End</button>
-          </div>
+          <CallScreen
+            peer={call.peer}
+            callType={call.type}
+            localStream={localStream}
+            remoteStream={remoteStream}
+            connectionState={connState}
+            onEnd={endCall}
+          />
         </div>
       )}
 
@@ -199,11 +294,17 @@ function Chat({
   const [text, setText] = useState("");
   return (
     <>
-      <h3>{other.avatar} {other.name}</h3>
+      <h3>
+        {other.avatar} {other.name}
+      </h3>
       <div className="messages">
         {messages.map((m) => (
-          <div key={m.id} className={`bubble ${m.senderId === me.id ? "mine" : ""}`}>
-            {m.kind === "quick_reply" ? "⚡ " : ""}{m.body}
+          <div
+            key={m.id}
+            className={`bubble ${m.senderId === me.id ? "mine" : ""}`}
+          >
+            {m.kind === "quick_reply" ? "⚡ " : ""}
+            {m.body}
           </div>
         ))}
       </div>
@@ -225,5 +326,9 @@ function Toast({ text, onClose }: { text: string; onClose: () => void }) {
     const t = setTimeout(onClose, 4000);
     return () => clearTimeout(t);
   }, [text]);
-  return <div className="toast" onClick={onClose}>{text}</div>;
+  return (
+    <div className="toast" onClick={onClose}>
+      {text}
+    </div>
+  );
 }

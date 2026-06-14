@@ -61,6 +61,15 @@ export function attachWs(wss: WebSocketServer) {
         });
       } else if (type === "call:hangup") {
         send(payload.toUserId, "call:ended", { callId: payload.callId });
+      } else if (
+        // WebRTC media negotiation — relay SDP offer/answer + ICE candidates
+        // verbatim between the two participants. The server never inspects media;
+        // it only passes these through, stamping who they came from.
+        type === "webrtc:offer" ||
+        type === "webrtc:answer" ||
+        type === "webrtc:ice"
+      ) {
+        send(payload.toUserId, type, { ...payload, fromUserId: userId });
       }
     });
 
