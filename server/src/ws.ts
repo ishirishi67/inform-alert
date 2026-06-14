@@ -117,6 +117,21 @@ export function attachWs(wss: WebSocketServer) {
 
     socket.on("close", () => {
       clients.delete(userId);
+      // If this user drops mid-call (e.g. closes the tab without pressing End),
+      // end any active call they were in and tell the other party — otherwise the
+      // other side's ring/connection would hang forever.
+      const now = Date.now();
+      for (const c of calls) {
+        if (
+          (c.callerId === userId || c.calleeId === userId) &&
+          (c.status === "ringing" || c.status === "accepted")
+        ) {
+          c.status = "ended";
+          c.endedAt = now;
+          const other = c.callerId === userId ? c.calleeId : c.callerId;
+          send(other, "call:ended", { callId: c.id });
+        }
+      }
       broadcastPresence();
     });
   });

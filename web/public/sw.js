@@ -14,7 +14,7 @@ self.addEventListener("push", (event) => {
       body: data.body,
       tag: "inform-alert-call", // collapse repeats into one
       renotify: true,
-      requireInteraction: true, // stay until the user acts
+      requireInteraction: false, // auto-dismiss so it can't get stuck on screen
       vibrate: [500, 300, 500, 300, 500],
       data: { url: data.url || "/" },
     })

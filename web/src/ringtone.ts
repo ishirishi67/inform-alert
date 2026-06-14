@@ -7,6 +7,7 @@
 export class Ringtone {
   private ctx: AudioContext | null = null;
   private interval: ReturnType<typeof setInterval> | null = null;
+  private safety: ReturnType<typeof setTimeout> | null = null;
   private playing = false;
 
   private ensureCtx(): AudioContext {
@@ -48,6 +49,8 @@ export class Ringtone {
     }
     this.ringOnce();
     this.interval = setInterval(() => this.ringOnce(), 3000);
+    // Safety net: never ring longer than 60s, whatever else goes wrong.
+    this.safety = setTimeout(() => this.stop(), 60_000);
   }
 
   private ringOnce(): void {
@@ -75,6 +78,10 @@ export class Ringtone {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    if (this.safety) {
+      clearTimeout(this.safety);
+      this.safety = null;
     }
   }
 }

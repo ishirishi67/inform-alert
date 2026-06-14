@@ -38,13 +38,24 @@ export function App() {
   const ringRef = useRef<Ringtone | null>(null);
   if (!ringRef.current) ringRef.current = new Ringtone();
 
+  // Dismiss the "X is calling…" system notification (shown by the service worker).
+  const closeCallNotif = () => {
+    if ("serviceWorker" in navigator)
+      navigator.serviceWorker.ready
+        .then((reg) => reg.getNotifications({ tag: "inform-alert-call" }))
+        .then((ns) => ns.forEach((n) => n.close()))
+        .catch(() => {});
+  };
+
   const teardownCall = () => {
     callRef.current?.close();
     callRef.current = null;
     setCall(null);
+    setIncoming(null); // also clear a still-ringing incoming call
     setLocalStream(null);
     setRemoteStream(null);
     setConnState("new");
+    closeCallNotif();
   };
 
   // --- Connect after login -------------------------------------------------
@@ -83,12 +94,13 @@ export function App() {
     };
   }, [me]);
 
-  // Ring: loop while a call is incoming (callee) or while the caller waits for
-  // the callee to connect. Stops as soon as connected, dismissed, or ended.
+  // Ring: loop while a call is incoming (callee) or while the caller is still
+  // waiting to connect. Only ring back while genuinely connecting — stop on
+  // connected, failed, disconnected, dismissed, or ended.
   useEffect(() => {
     const ring = ringRef.current!;
-    const shouldRing =
-      !!incoming || (!!call && call.outgoing && connState !== "connected");
+    const connecting = connState === "new" || connState === "connecting";
+    const shouldRing = !!incoming || (!!call && call.outgoing && connecting);
     if (shouldRing) {
       ring.start();
       if (incoming) navigator.vibrate?.([500, 300, 500]); // buzz on mobile
@@ -96,6 +108,14 @@ export function App() {
       ring.stop();
     }
   }, [incoming, call, connState]);
+
+  // If the media connection fails outright, end the call and inform the user.
+  useEffect(() => {
+    if (call && connState === "failed") {
+      setToast("Call connection failed");
+      teardownCall();
+    }
+  }, [call, connState]);
 
   // Load thread when switching conversations.
   useEffect(() => {
