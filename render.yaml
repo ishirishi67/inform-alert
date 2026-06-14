@@ -1,0 +1,15 @@
+# Render Blueprint — one always-on Node service that serves the API,
+# the WebSocket signaling hub, AND the built web app from a single URL.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: inform-alert
+    runtime: node
+    plan: free # free tier supports WebSockets; spins down when idle (the client auto-reconnects)
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT is provided automatically by Render; the server reads process.env.PORT.
