@@ -1,4 +1,4 @@
-import type { Message, User } from "./types";
+import type { CallLogEntry, Message, User, WeeklyTodo } from "./types";
 
 const json = (r: Response) => {
   if (!r.ok) throw new Error(`${r.status}`);
@@ -57,6 +57,25 @@ export const api = {
   // Transcribe + summarize a recording message; returns the updated message.
   summarizeMessage: async (id: string): Promise<{ message: Message }> => {
     const r = await fetch(`/api/messages/${id}/summarize`, { method: "POST" });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+    return data;
+  },
+
+  history: (userId: string): Promise<{ calls: CallLogEntry[] }> =>
+    fetch(`/api/history?userId=${userId}`).then(json),
+
+  todos: (userId: string): Promise<{ todos: WeeklyTodo[] }> =>
+    fetch(`/api/todos?userId=${userId}`).then(json),
+
+  generateTodos: async (
+    userId: string
+  ): Promise<{ todo: WeeklyTodo | null; note?: string }> => {
+    const r = await fetch("/api/todos/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
     return data;

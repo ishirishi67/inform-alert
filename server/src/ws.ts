@@ -4,6 +4,7 @@
 import type { WebSocketServer, WebSocket } from "ws";
 import { calls, getUser } from "./store.js";
 import { sendPush } from "./push.js";
+import { persistCall } from "./db.js";
 
 type Client = { userId: string; socket: WebSocket };
 const clients = new Map<string, Client>(); // userId -> connection
@@ -16,6 +17,7 @@ function markCall(callId: string, status: (typeof calls)[number]["status"]) {
     call.status = status;
     if (["dismissed_busy", "ended", "missed"].includes(status))
       call.endedAt = call.endedAt ?? Date.now();
+    persistCall(call);
   }
 }
 
@@ -31,6 +33,7 @@ function endActiveCalls(userId: string) {
     ) {
       c.status = "ended";
       c.endedAt = now;
+      persistCall(c);
       const other = c.callerId === userId ? c.calleeId : c.callerId;
       send(other, "call:ended", { callId: c.id });
     }

@@ -1,6 +1,13 @@
 // In-memory store for v1 scaffold. Seeds one family circle so the app runs
 // immediately. Replace with PostgreSQL-backed repositories later (CLAUDE.md §6).
-import type { Call, CallbackReminder, Circle, Message, User } from "./types.js";
+import type {
+  Call,
+  CallbackReminder,
+  Circle,
+  Message,
+  User,
+  WeeklyTodo,
+} from "./types.js";
 
 let seq = 0;
 export const id = (prefix: string) => `${prefix}_${++seq}`;
@@ -18,6 +25,7 @@ export const circles: Circle[] = [
 export const calls: Call[] = [];
 export const messages: Message[] = [];
 export const reminders: CallbackReminder[] = [];
+export const todos: WeeklyTodo[] = [];
 
 export const getUser = (uid: string) => users.find((u) => u.id === uid);
 

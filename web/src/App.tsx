@@ -7,7 +7,14 @@ import { CallRecorder } from "./recorder";
 import { setupPush } from "./push";
 import { BusyReply } from "./components/BusyReply";
 import { CallScreen } from "./components/CallScreen";
-import type { CallType, IncomingCall, Message, User } from "./types";
+import type {
+  CallLogEntry,
+  CallType,
+  IncomingCall,
+  Message,
+  User,
+  WeeklyTodo,
+} from "./types";
 
 type WsClient = ReturnType<typeof connectWs>;
 type ActiveCall = { id: string; peer: User; type: CallType; outgoing: boolean };
@@ -34,6 +41,7 @@ export function App() {
   const [members, setMembers] = useState<User[]>([]);
   const [online, setOnline] = useState<string[]>([]);
   const [active, setActive] = useState<User | null>(null); // who I'm chatting with
+  const [view, setView] = useState<"chat" | "activity">("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const [busyFor, setBusyFor] = useState<IncomingCall | null>(null);
@@ -335,12 +343,23 @@ export function App() {
 
       <main>
         <aside>
+          <div
+            className={`member activity-link ${view === "activity" ? "selected" : ""}`}
+            onClick={() => setView("activity")}
+          >
+            📋 History &amp; To-dos
+          </div>
           <h3>Family</h3>
           {members.map((u) => (
             <div
               key={u.id}
-              className={`member ${active?.id === u.id ? "selected" : ""}`}
-              onClick={() => setActive(u)}
+              className={`member ${
+                view === "chat" && active?.id === u.id ? "selected" : ""
+              }`}
+              onClick={() => {
+                setView("chat");
+                setActive(u);
+              }}
             >
               <span className={`dot ${online.includes(u.id) ? "on" : ""}`} />
               {u.avatar} {u.name}
@@ -369,7 +388,9 @@ export function App() {
         </aside>
 
         <section className="thread">
-          {active ? (
+          {view === "activity" ? (
+            <ActivityPanel me={me} />
+          ) : active ? (
             <Chat
               me={me}
               other={active}
@@ -530,6 +551,90 @@ function Chat({
         <button onClick={() => (onSend(text), setText(""))}>Send</button>
       </div>
     </>
+  );
+}
+
+function ActivityPanel({ me }: { me: User }) {
+  const [calls, setCalls] = useState<CallLogEntry[]>([]);
+  const [todos, setTodos] = useState<WeeklyTodo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.history(me.id).then((r) => setCalls(r.calls)).catch(() => {});
+    api.todos(me.id).then((r) => setTodos(r.todos)).catch(() => {});
+  }, [me.id]);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { todo, note } = await api.generateTodos(me.id);
+      if (todo) setTodos((t) => [todo, ...t]);
+      else if (note) setError(note);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't generate to-dos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fmt = (ms: number) =>
+    new Date(ms).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  const latest = todos[0];
+
+  return (
+    <div className="activity">
+      <h3>📋 History &amp; To-dos</h3>
+
+      <div className="todos-card">
+        <div className="row between">
+          <strong>✨ This week's to-dos</strong>
+          <button className="accept" disabled={loading} onClick={generate}>
+            {loading ? "Generating…" : "Generate"}
+          </button>
+        </div>
+        {error && <div className="summary-error">{error}</div>}
+        {latest ? (
+          <div className="summary">
+            <small className="muted">Generated {fmt(latest.generatedAt)}</small>
+            <div>{latest.content}</div>
+          </div>
+        ) : (
+          <p className="muted">
+            Generate a to-do list from this week's calls and messages.
+          </p>
+        )}
+      </div>
+
+      <h4>Call history</h4>
+      {calls.length === 0 ? (
+        <p className="muted">No calls yet.</p>
+      ) : (
+        <div className="call-log">
+          {calls.map((c) => (
+            <div key={c.id} className="log-row">
+              <span className="log-icon">
+                {c.type === "video" ? "🎥" : "📞"}
+              </span>
+              <span className="log-dir">
+                {c.direction === "outgoing" ? "↗" : "↘"}
+              </span>
+              <span className="log-name">
+                {c.other ? `${c.other.avatar} ${c.other.name}` : "—"}
+              </span>
+              <span className={`log-status status-${c.status}`}>{c.status}</span>
+              <span className="log-time muted">{fmt(c.startedAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

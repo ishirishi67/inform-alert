@@ -1,26 +1,27 @@
-// Stores uploaded call recordings on disk so the other participant can fetch and
-// play them. This is demo-grade: the temp directory is ephemeral (wiped on
-// restart/redeploy) and only the most recent few recordings are kept. For
-// production, use durable object storage (S3/GCS/Cloudinary) instead.
-import {
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  createReadStream,
-  existsSync,
-  rmSync,
-} from "fs";
+// Stores uploaded call recordings. When a database is configured (DATABASE_URL),
+// recordings are stored there so they survive restarts and stay playable. Without
+// a database, they fall back to the OS temp dir (demo-grade, wiped on restart).
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { dbEnabled, dbGetRecording, dbSaveRecording } from "./db.js";
 
 const dir = join(tmpdir(), "informalert-uploads");
 mkdirSync(dir, { recursive: true });
 
 const meta = new Map<string, { mime: string }>();
 const order: string[] = [];
-const MAX_KEPT = 20; // bound disk use on the free tier
+const MAX_KEPT = 20; // bound disk use when falling back to local files
 
-export function saveRecording(id: string, buffer: Buffer, mime: string): void {
+export async function saveRecording(
+  id: string,
+  buffer: Buffer,
+  mime: string
+): Promise<void> {
+  if (dbEnabled) {
+    await dbSaveRecording(id, buffer, mime);
+    return;
+  }
   writeFileSync(join(dir, id), buffer);
   meta.set(id, { mime });
   order.push(id);
@@ -37,14 +38,12 @@ export function saveRecording(id: string, buffer: Buffer, mime: string): void {
   }
 }
 
-export function getRecording(id: string) {
-  const path = join(dir, id);
-  if (!meta.has(id) || !existsSync(path)) return null;
-  return { stream: createReadStream(path), mime: meta.get(id)!.mime };
-}
-
-// Whole-file read, for handing the recording to the transcription service.
-export function getRecordingBuffer(id: string) {
+// Whole-file read — used both to serve playback (with range support) and to hand
+// the recording to the transcription service.
+export async function getRecordingBuffer(
+  id: string
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  if (dbEnabled) return dbGetRecording(id);
   const path = join(dir, id);
   if (!meta.has(id) || !existsSync(path)) return null;
   return { buffer: readFileSync(path), mime: meta.get(id)!.mime };

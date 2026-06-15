@@ -23,3 +23,21 @@ export interface Message {
   summary?: string; // AI summary of a recording, once generated
   createdAt: number;
 }
+
+export interface CallLogEntry {
+  id: string;
+  direction: "incoming" | "outgoing";
+  other: { name: string; avatar: string } | null;
+  type: CallType;
+  status: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface WeeklyTodo {
+  id: string;
+  userId: string;
+  generatedAt: number;
+  weekStart: number;
+  content: string;
+}

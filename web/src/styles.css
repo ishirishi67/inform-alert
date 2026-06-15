@@ -114,6 +114,20 @@ aside h3 { color: var(--muted); }
 .summary strong { display: block; margin-bottom: 4px; color: var(--accent); }
 .summary-error { margin-top: 6px; color: var(--busy); font-size: 12px; }
 
+/* History & To-dos panel */
+.activity-link { font-weight: 600; margin-bottom: 8px; }
+.activity { overflow-y: auto; padding-right: 6px; }
+.activity h4 { color: var(--muted); margin: 18px 0 8px; }
+.todos-card { background: var(--panel); border: 1px solid var(--panel-2); border-radius: 12px; padding: 14px; }
+.row.between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.call-log { display: flex; flex-direction: column; gap: 4px; }
+.log-row { display: grid; grid-template-columns: 24px 18px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel); border-radius: 8px; }
+.log-name { font-weight: 500; }
+.log-status { font-size: 12px; text-transform: capitalize; padding: 2px 8px; border-radius: 10px; background: var(--panel-2); color: var(--muted); }
+.status-accepted, .status-ended { color: var(--accent); }
+.status-dismissed_busy, .status-missed { color: var(--busy); }
+.log-time { font-size: 12px; }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

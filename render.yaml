@@ -31,3 +31,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Durable storage. Paste a free Postgres connection string (Neon/Supabase)
+      # here in the Render dashboard. With it, recordings/messages/summaries/
+      # to-dos persist forever; without it, they reset on restart.
+      - key: DATABASE_URL
+        sync: false
