@@ -27,6 +27,7 @@ import { generateTodos, summarize, transcribe } from "./summarize.js";
 import {
   dbEnabled,
   initDb,
+  isDbReady,
   loadAll,
   persistCall,
   persistMessage,
@@ -35,17 +36,26 @@ import {
 
 initPush();
 
-// Load any persisted data into the in-memory working set on boot.
-await initDb();
-{
-  const saved = await loadAll();
-  calls.push(...saved.calls);
-  messages.push(...saved.messages);
-  todos.push(...saved.todos);
-  console.log(
-    `[InformAlert] storage: ${dbEnabled ? "database (durable)" : "in-memory (resets on restart)"}` +
-      ` — loaded ${saved.calls.length} calls, ${saved.messages.length} messages`
-  );
+// Load any persisted data into the in-memory working set on boot. A database
+// failure must NOT crash the server — it falls back to in-memory and logs why.
+if (dbEnabled) {
+  try {
+    await initDb();
+    const saved = await loadAll();
+    calls.push(...saved.calls);
+    messages.push(...saved.messages);
+    todos.push(...saved.todos);
+    console.log(
+      `[InformAlert] storage: database (durable) — loaded ${saved.calls.length} calls, ${saved.messages.length} messages`
+    );
+  } catch (err: any) {
+    console.error(
+      "[InformAlert] DATABASE_URL is set but the connection failed — using in-memory. Reason:",
+      err?.message ?? err
+    );
+  }
+} else {
+  console.log("[InformAlert] storage: in-memory (set DATABASE_URL to persist)");
 }
 
 const app = express();
@@ -319,7 +329,9 @@ app.post("/api/push/subscribe", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, users }));
+app.get("/api/health", (_req, res) =>
+  res.json({ ok: true, storage: isDbReady() ? "database" : "memory", users })
+);
 
 // --- Serve the built web app (production / single-service deploy) ----------
 // In dev, Vite serves the client on :5173 and proxies here, so this is skipped.

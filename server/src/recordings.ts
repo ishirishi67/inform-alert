@@ -4,7 +4,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { dbEnabled, dbGetRecording, dbSaveRecording } from "./db.js";
+import { isDbReady, dbGetRecording, dbSaveRecording } from "./db.js";
 
 const dir = join(tmpdir(), "informalert-uploads");
 mkdirSync(dir, { recursive: true });
@@ -18,7 +18,7 @@ export async function saveRecording(
   buffer: Buffer,
   mime: string
 ): Promise<void> {
-  if (dbEnabled) {
+  if (isDbReady()) {
     await dbSaveRecording(id, buffer, mime);
     return;
   }
@@ -43,7 +43,7 @@ export async function saveRecording(
 export async function getRecordingBuffer(
   id: string
 ): Promise<{ buffer: Buffer; mime: string } | null> {
-  if (dbEnabled) return dbGetRecording(id);
+  if (isDbReady()) return dbGetRecording(id);
   const path = join(dir, id);
   if (!meta.has(id) || !existsSync(path)) return null;
   return { buffer: readFileSync(path), mime: meta.get(id)!.mime };

@@ -6,11 +6,22 @@
 import pg from "pg";
 import type { Call, Message, WeeklyTodo } from "./types.js";
 
-const url = process.env.DATABASE_URL;
+// node-postgres doesn't support `channel_binding=require` — strip it (and tidy a
+// resulting leading "?&") so a Neon/Supabase pooled URL connects cleanly.
+const raw = process.env.DATABASE_URL;
+const url = raw
+  ? raw.replace(/[?&]channel_binding=require/gi, "").replace(/\?&/, "?")
+  : undefined;
+
 export const dbEnabled = !!url;
 const pool = url
   ? new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5 })
   : null;
+
+// True only once the connection succeeded and tables exist. Recording storage and
+// the /api/health diagnostic key off this, NOT off "a URL was configured".
+let ready = false;
+export const isDbReady = () => ready;
 
 export async function initDb(): Promise<void> {
   if (!pool) return;
@@ -32,6 +43,7 @@ export async function initDb(): Promise<void> {
     `CREATE TABLE IF NOT EXISTS todos (
        id text PRIMARY KEY, user_id text, generated_at bigint, week_start bigint, content text)`
   );
+  ready = true;
 }
 
 export async function loadAll(): Promise<{
