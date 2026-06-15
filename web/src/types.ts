@@ -18,6 +18,7 @@ export interface Message {
   threadId: string;
   senderId: string;
   body: string;
-  kind: "text" | "quick_reply";
+  kind: "text" | "quick_reply" | "recording";
+  mediaUrl?: string; // for kind: "recording"
   createdAt: number;
 }

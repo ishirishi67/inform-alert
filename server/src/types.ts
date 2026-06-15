@@ -9,7 +9,7 @@ export type CallStatus =
   | "dismissed_busy"
   | "missed"
   | "ended";
-export type MessageKind = "text" | "quick_reply";
+export type MessageKind = "text" | "quick_reply" | "recording";
 export type ReminderSource = "calendar" | "delay";
 export type ReminderStatus = "scheduled" | "fired" | "cancelled";
 
@@ -42,6 +42,7 @@ export interface Message {
   senderId: string;
   body: string;
   kind: MessageKind;
+  mediaUrl?: string; // for kind: "recording" — URL of the uploaded call recording
   createdAt: number;
 }
 

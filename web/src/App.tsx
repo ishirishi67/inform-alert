@@ -46,8 +46,14 @@ export function App() {
   const [connState, setConnState] = useState<RTCPeerConnectionState>("new");
   const [recording, setRecording] = useState(false);
   const [remoteRecording, setRemoteRecording] = useState(false);
+  const [pendingRec, setPendingRec] = useState<{
+    blob: Blob;
+    url: string;
+    peer: User;
+  } | null>(null);
   const callRef = useRef<PeerCall | null>(null);
   const recRef = useRef<CallRecorder | null>(null);
+  const recPeerRef = useRef<User | null>(null); // who the recording is with
   const ws = useRef<WsClient | null>(null);
   const ringRef = useRef<Ringtone | null>(null);
   if (!ringRef.current) ringRef.current = new Ringtone();
@@ -61,16 +67,44 @@ export function App() {
         .catch(() => {});
   };
 
-  // Save an in-progress recording (e.g. when the call ends) to the device.
+  // Stop recording and offer to send/save it. Works even if the call has ended,
+  // since we captured the peer when recording started (avoids stale state).
   const finishRecording = () => {
     const rec = recRef.current;
+    const peer = recPeerRef.current;
     recRef.current = null;
+    recPeerRef.current = null;
     setRecording(false);
     setRemoteRecording(false);
     if (rec)
       rec.stop().then((blob) => {
-        if (blob.size) downloadBlob(blob, `informalert-call-${Date.now()}.webm`);
+        if (!blob.size) return;
+        if (peer) setPendingRec({ blob, url: URL.createObjectURL(blob), peer });
+        else downloadBlob(blob, `informalert-call-${Date.now()}.webm`);
       });
+  };
+
+  // Send the just-finished recording to the other person (with an optional note).
+  const sendRecording = async (note: string) => {
+    if (!pendingRec || !me) return;
+    const { blob, peer, url } = pendingRec;
+    setPendingRec(null);
+    setToast("Sending recording…");
+    try {
+      const { url: mediaUrl } = await api.uploadRecording(blob);
+      await api.sendMessage(
+        me.id,
+        peer.id,
+        note.trim() || "📹 Call recording",
+        "recording",
+        mediaUrl
+      );
+      setToast(`Recording sent to ${peer.name}`);
+    } catch {
+      setToast("Couldn't send the recording");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   };
 
   const teardownCall = () => {
@@ -101,6 +135,7 @@ export function App() {
       const rec = new CallRecorder();
       rec.start(localStream, remoteStream, call.type === "video");
       recRef.current = rec;
+      recPeerRef.current = call.peer; // remember who, for sending afterwards
       setRecording(true);
       ws.current?.send("call:recording", { toUserId: call.peer.id, on: true });
     } catch {
@@ -376,7 +411,60 @@ export function App() {
         </div>
       )}
 
+      {/* After recording: preview, add a note, send to the other person */}
+      {pendingRec && (
+        <div className="modal">
+          <SendRecording
+            rec={pendingRec}
+            onSend={sendRecording}
+            onSave={() => {
+              downloadBlob(pendingRec.blob, `informalert-call-${Date.now()}.webm`);
+              URL.revokeObjectURL(pendingRec.url);
+              setPendingRec(null);
+            }}
+            onDiscard={() => {
+              URL.revokeObjectURL(pendingRec.url);
+              setPendingRec(null);
+            }}
+          />
+        </div>
+      )}
+
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+function SendRecording({
+  rec,
+  onSend,
+  onSave,
+  onDiscard,
+}: {
+  rec: { url: string; peer: User };
+  onSend: (note: string) => void;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  const [note, setNote] = useState("");
+  return (
+    <div className="sheet">
+      <h3>Recording ready 🎥</h3>
+      <video src={rec.url} controls className="rec-preview" />
+      <input
+        placeholder={`Add a note for ${rec.peer.name}…`}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="row">
+        <button className="accept" onClick={() => onSend(note)}>
+          Send to {rec.peer.avatar} {rec.peer.name}
+        </button>
+        <button onClick={onSave}>Save to device</button>
+      </div>
+      <button className="link" onClick={onDiscard}>
+        Discard
+      </button>
     </div>
   );
 }
@@ -404,8 +492,17 @@ function Chat({
             key={m.id}
             className={`bubble ${m.senderId === me.id ? "mine" : ""}`}
           >
-            {m.kind === "quick_reply" ? "⚡ " : ""}
-            {m.body}
+            {m.kind === "recording" ? (
+              <>
+                <video src={m.mediaUrl} controls className="msg-video" />
+                {m.body && <div>{m.body}</div>}
+              </>
+            ) : (
+              <>
+                {m.kind === "quick_reply" ? "⚡ " : ""}
+                {m.body}
+              </>
+            )}
           </div>
         ))}
       </div>

@@ -37,12 +37,21 @@ export const api = {
     senderId: string,
     recipientId: string,
     body: string,
-    kind: "text" | "quick_reply"
+    kind: "text" | "quick_reply" | "recording",
+    mediaUrl?: string
   ) =>
     fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ senderId, recipientId, body, kind }),
+      body: JSON.stringify({ senderId, recipientId, body, kind, mediaUrl }),
+    }).then(json),
+
+  // Upload a recorded call blob; returns a URL to reference in a message.
+  uploadRecording: (blob: Blob): Promise<{ url: string }> =>
+    fetch("/api/recordings", {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "video/webm" },
+      body: blob,
     }).then(json),
 
   // source: "calendar" => when meeting ends; "delay" => "Remind me in…"

@@ -18,9 +18,10 @@ import {
   threadId,
   users,
 } from "./store.js";
-import type { CallbackReminder } from "./types.js";
+import type { CallbackReminder, Message } from "./types.js";
 import { attachWs, send } from "./ws.js";
 import { addSubscription, getPublicKey, initPush } from "./push.js";
+import { getRecording, saveRecording } from "./recordings.js";
 
 initPush();
 
@@ -82,20 +83,49 @@ app.get("/api/messages", (req, res) => {
 });
 
 app.post("/api/messages", (req, res) => {
-  const { senderId, recipientId, body, kind } = req.body ?? {};
+  const { senderId, recipientId, body, kind, mediaUrl } = req.body ?? {};
   if (!getUser(senderId) || !getUser(recipientId))
     return res.status(400).json({ error: "bad users" });
-  const msg = {
+  const msgKind: Message["kind"] =
+    kind === "quick_reply"
+      ? "quick_reply"
+      : kind === "recording"
+        ? "recording"
+        : "text";
+  const msg: Message = {
     id: id("msg"),
     threadId: threadId(senderId, recipientId),
     senderId,
     body,
-    kind: kind === "quick_reply" ? ("quick_reply" as const) : ("text" as const),
+    kind: msgKind,
+    ...(mediaUrl ? { mediaUrl } : {}),
     createdAt: Date.now(),
   };
   messages.push(msg);
   send(recipientId, "message:new", msg); // live-deliver
   res.json({ message: msg });
+});
+
+// --- Call recordings (upload + serve) -------------------------------------
+// The recorder uploads the WebM blob here; the chat message then references the
+// returned URL so the other person can play it.
+app.post(
+  "/api/recordings",
+  express.raw({ type: () => true, limit: "60mb" }),
+  (req, res) => {
+    const buf = req.body as Buffer;
+    if (!buf || !buf.length) return res.status(400).json({ error: "empty" });
+    const recId = id("rec");
+    saveRecording(recId, buf, String(req.headers["content-type"] || "video/webm"));
+    res.json({ url: `/api/recordings/${recId}` });
+  }
+);
+
+app.get("/api/recordings/:id", (req, res) => {
+  const r = getRecording(req.params.id);
+  if (!r) return res.status(404).end();
+  res.setHeader("Content-Type", r.mime);
+  r.stream.pipe(res);
 });
 
 // --- Callback reminders ---------------------------------------------------
