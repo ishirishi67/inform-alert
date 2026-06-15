@@ -19,6 +19,24 @@ function markCall(callId: string, status: (typeof calls)[number]["status"]) {
   }
 }
 
+// Pending "they dropped" cleanups, so a brief reconnect doesn't end a live call.
+const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function endActiveCalls(userId: string) {
+  const now = Date.now();
+  for (const c of calls) {
+    if (
+      (c.callerId === userId || c.calleeId === userId) &&
+      (c.status === "ringing" || c.status === "accepted")
+    ) {
+      c.status = "ended";
+      c.endedAt = now;
+      const other = c.callerId === userId ? c.calleeId : c.callerId;
+      send(other, "call:ended", { callId: c.id });
+    }
+  }
+}
+
 export function send(userId: string, type: string, payload: unknown) {
   const c = clients.get(userId);
   if (c && c.socket.readyState === 1) {
@@ -40,6 +58,13 @@ export function attachWs(wss: WebSocketServer) {
     if (!userId || !getUser(userId)) {
       socket.close(4001, "unknown user");
       return;
+    }
+
+    // Back online — cancel any pending disconnect cleanup for this user.
+    const pending = disconnectTimers.get(userId);
+    if (pending) {
+      clearTimeout(pending);
+      disconnectTimers.delete(userId);
     }
 
     clients.set(userId, { userId, socket });
@@ -116,23 +141,18 @@ export function attachWs(wss: WebSocketServer) {
     });
 
     socket.on("close", () => {
+      // Ignore if a newer connection already replaced this socket.
+      if (clients.get(userId)?.socket !== socket) return;
       clients.delete(userId);
-      // If this user drops mid-call (e.g. closes the tab without pressing End),
-      // end any active call they were in and tell the other party — otherwise the
-      // other side's ring/connection would hang forever.
-      const now = Date.now();
-      for (const c of calls) {
-        if (
-          (c.callerId === userId || c.calleeId === userId) &&
-          (c.status === "ringing" || c.status === "accepted")
-        ) {
-          c.status = "ended";
-          c.endedAt = now;
-          const other = c.callerId === userId ? c.calleeId : c.callerId;
-          send(other, "call:ended", { callId: c.id });
-        }
-      }
       broadcastPresence();
+      // Grace period: only end this user's active calls if they DON'T reconnect
+      // within a few seconds. A brief network blip or page reload shouldn't drop
+      // a live call — but a real tab close / hang-up still ends it for both.
+      const timer = setTimeout(() => {
+        disconnectTimers.delete(userId);
+        if (!clients.has(userId)) endActiveCalls(userId);
+      }, 8000);
+      disconnectTimers.set(userId, timer);
     });
   });
 }

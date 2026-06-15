@@ -3,9 +3,29 @@
 // ICE candidates (see ws relay). Public STUN handles NAT traversal for most home
 // networks. NOTE: very restrictive networks (symmetric/corporate NAT) also need a
 // TURN relay — add one here later if calls fail to connect on some networks.
+// STUN finds a direct path; TURN relays media when a direct path is impossible
+// (different networks, strict NAT, mobile data ↔ wifi). Without TURN, cross-
+// network calls often connect briefly then fail. These are free public TURN
+// relays — fine for a family-scale demo. For production, get your own
+// credentials (e.g. Metered's free 50GB/mo tier) and swap them in here.
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 ];
 
 type SignalSend = (type: string, payload: unknown) => void;
