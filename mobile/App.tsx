@@ -145,6 +145,13 @@ function HomeScreen({
             <Text style={styles.rowText}>
               {item.avatar}  {item.name}
             </Text>
+            <Pressable
+              hitSlop={12}
+              onPress={() => Linking.openURL(BASE)}
+              style={styles.callBtn}
+            >
+              <Text style={styles.callBtnText}>📞</Text>
+            </Pressable>
             <Text style={styles.chevron}>›</Text>
           </Pressable>
         )}
@@ -394,6 +401,16 @@ const styles = StyleSheet.create({
     borderBottomColor: "#202c33",
   },
   rowText: { color: "#e9edef", fontSize: 17, flex: 1 },
+  callBtn: {
+    backgroundColor: "#202c33",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  callBtnText: { fontSize: 18 },
   chevron: { color: "#8696a0", fontSize: 22 },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#8696a0" },
   dotOn: { backgroundColor: "#00a884" },
