@@ -3,6 +3,7 @@ import { api } from "./api";
 import { connectWs } from "./ws";
 import { PeerCall } from "./webrtc";
 import { Ringtone } from "./ringtone";
+import { CallRecorder } from "./recorder";
 import { setupPush } from "./push";
 import { BusyReply } from "./components/BusyReply";
 import { CallScreen } from "./components/CallScreen";
@@ -10,6 +11,16 @@ import type { CallType, IncomingCall, Message, User } from "./types";
 
 type WsClient = ReturnType<typeof connectWs>;
 type ActiveCall = { id: string; peer: User; type: CallType; outgoing: boolean };
+
+// Save a recorded Blob to the user's device.
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 // The three seeded family members (CLAUDE.md §3). "Login" = pick who you are.
 const SEED_USERS: User[] = [
@@ -33,7 +44,10 @@ export function App() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connState, setConnState] = useState<RTCPeerConnectionState>("new");
+  const [recording, setRecording] = useState(false);
+  const [remoteRecording, setRemoteRecording] = useState(false);
   const callRef = useRef<PeerCall | null>(null);
+  const recRef = useRef<CallRecorder | null>(null);
   const ws = useRef<WsClient | null>(null);
   const ringRef = useRef<Ringtone | null>(null);
   if (!ringRef.current) ringRef.current = new Ringtone();
@@ -47,7 +61,20 @@ export function App() {
         .catch(() => {});
   };
 
+  // Save an in-progress recording (e.g. when the call ends) to the device.
+  const finishRecording = () => {
+    const rec = recRef.current;
+    recRef.current = null;
+    setRecording(false);
+    setRemoteRecording(false);
+    if (rec)
+      rec.stop().then((blob) => {
+        if (blob.size) downloadBlob(blob, `informalert-call-${Date.now()}.webm`);
+      });
+  };
+
   const teardownCall = () => {
+    finishRecording();
     callRef.current?.close();
     callRef.current = null;
     setCall(null);
@@ -56,6 +83,29 @@ export function App() {
     setRemoteStream(null);
     setConnState("new");
     closeCallNotif();
+  };
+
+  // Start/stop recording. The other side is told so both see the REC indicator.
+  const toggleRecord = async () => {
+    if (!call) return;
+    if (recording) {
+      ws.current?.send("call:recording", { toUserId: call.peer.id, on: false });
+      finishRecording();
+      return;
+    }
+    if (!localStream || !remoteStream) {
+      setToast("Wait until the call connects, then record");
+      return;
+    }
+    try {
+      const rec = new CallRecorder();
+      rec.start(localStream, remoteStream, call.type === "video");
+      recRef.current = rec;
+      setRecording(true);
+      ws.current?.send("call:recording", { toUserId: call.peer.id, on: true });
+    } catch {
+      setToast("Recording isn't supported on this browser");
+    }
   };
 
   // --- Connect after login -------------------------------------------------
@@ -81,6 +131,7 @@ export function App() {
         callRef.current?.handleAnswer(payload.sdp);
       else if (type === "webrtc:ice")
         callRef.current?.handleIce(payload.candidate);
+      else if (type === "call:recording") setRemoteRecording(!!payload.on);
       else if (type === "message:new")
         setMessages((m) => [...m, payload as Message]);
       else if (type === "reminder:callback")
@@ -317,6 +368,9 @@ export function App() {
             localStream={localStream}
             remoteStream={remoteStream}
             connectionState={connState}
+            recording={recording}
+            remoteRecording={remoteRecording}
+            onToggleRecord={toggleRecord}
             onEnd={endCall}
           />
         </div>

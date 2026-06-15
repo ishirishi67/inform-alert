@@ -137,6 +137,12 @@ export function attachWs(wss: WebSocketServer) {
         type === "webrtc:ice"
       ) {
         send(payload.toUserId, type, { ...payload, fromUserId: userId });
+      } else if (type === "call:recording") {
+        // Let the other party know a recording started/stopped (shown to both).
+        send(payload.toUserId, "call:recording", {
+          on: !!payload.on,
+          fromUserId: userId,
+        });
       }
     });
 

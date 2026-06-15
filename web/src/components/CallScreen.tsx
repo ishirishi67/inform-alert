@@ -10,6 +10,9 @@ export function CallScreen({
   localStream,
   remoteStream,
   connectionState,
+  recording,
+  remoteRecording,
+  onToggleRecord,
   onEnd,
 }: {
   peer: User;
@@ -17,6 +20,9 @@ export function CallScreen({
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   connectionState: RTCPeerConnectionState;
+  recording: boolean;
+  remoteRecording: boolean;
+  onToggleRecord: () => void;
   onEnd: () => void;
 }) {
   const localRef = useRef<HTMLVideoElement>(null);
@@ -58,6 +64,9 @@ export function CallScreen({
     <div className="callscreen">
       <div className="remote-wrap">
         <video ref={remoteRef} autoPlay playsInline className="remote-video" />
+        {(recording || remoteRecording) && (
+          <div className="rec-badge">● REC</div>
+        )}
         {showAvatar && (
           <div className="call-overlay">
             <div className="avatar-big">{peer.avatar}</div>
@@ -87,6 +96,13 @@ export function CallScreen({
             {camOff ? "📷̶" : "📷"}
           </button>
         )}
+        <button
+          title={recording ? "Stop recording" : "Record call"}
+          className={recording ? "recording" : ""}
+          onClick={onToggleRecord}
+        >
+          {recording ? "⏹" : "⏺"}
+        </button>
         <button className="busy" onClick={onEnd}>
           End
         </button>
