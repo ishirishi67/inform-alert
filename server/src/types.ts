@@ -44,7 +44,16 @@ export interface Message {
   kind: MessageKind;
   mediaUrl?: string; // for kind: "recording" — URL of the uploaded call recording
   summary?: string; // AI summary of a recording, once generated
+  transcript?: string; // saved speech-to-text, reused for weekly to-dos
   createdAt: number;
+}
+
+export interface WeeklyTodo {
+  id: string;
+  userId: string;
+  generatedAt: number;
+  weekStart: number;
+  content: string; // markdown checklist
 }
 
 export interface CallbackReminder {
