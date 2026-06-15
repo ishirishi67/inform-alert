@@ -21,7 +21,8 @@ import {
 import type { CallbackReminder, Message } from "./types.js";
 import { attachWs, send } from "./ws.js";
 import { addSubscription, getPublicKey, initPush } from "./push.js";
-import { getRecording, saveRecording } from "./recordings.js";
+import { getRecording, getRecordingBuffer, saveRecording } from "./recordings.js";
+import { summarize, transcribe } from "./summarize.js";
 
 initPush();
 
@@ -126,6 +127,30 @@ app.get("/api/recordings/:id", (req, res) => {
   if (!r) return res.status(404).end();
   res.setHeader("Content-Type", r.mime);
   r.stream.pipe(res);
+});
+
+// Transcribe + summarize a recording message, then attach the summary and push
+// the updated message to both participants.
+app.post("/api/messages/:id/summarize", async (req, res) => {
+  const msg = messages.find((m) => m.id === req.params.id);
+  if (!msg || msg.kind !== "recording" || !msg.mediaUrl)
+    return res.status(404).json({ error: "not a recording message" });
+  const recId = msg.mediaUrl.split("/").pop() ?? "";
+  const rec = getRecordingBuffer(recId);
+  if (!rec)
+    return res.status(410).json({ error: "this recording is no longer available" });
+  try {
+    const transcript = await transcribe(rec.buffer, rec.mime);
+    msg.summary = transcript
+      ? await summarize(transcript)
+      : "No speech was detected in this recording.";
+    const [a, b] = msg.threadId.split(":");
+    send(a, "message:update", msg);
+    send(b, "message:update", msg);
+    res.json({ message: msg });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
 });
 
 // --- Callback reminders ---------------------------------------------------

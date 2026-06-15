@@ -2,7 +2,14 @@
 // play them. This is demo-grade: the temp directory is ephemeral (wiped on
 // restart/redeploy) and only the most recent few recordings are kept. For
 // production, use durable object storage (S3/GCS/Cloudinary) instead.
-import { mkdirSync, writeFileSync, createReadStream, existsSync, rmSync } from "fs";
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  createReadStream,
+  existsSync,
+  rmSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -34,4 +41,11 @@ export function getRecording(id: string) {
   const path = join(dir, id);
   if (!meta.has(id) || !existsSync(path)) return null;
   return { stream: createReadStream(path), mime: meta.get(id)!.mime };
+}
+
+// Whole-file read, for handing the recording to the transcription service.
+export function getRecordingBuffer(id: string) {
+  const path = join(dir, id);
+  if (!meta.has(id) || !existsSync(path)) return null;
+  return { buffer: readFileSync(path), mime: meta.get(id)!.mime };
 }

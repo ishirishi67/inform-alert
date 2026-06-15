@@ -54,6 +54,14 @@ export const api = {
       body: blob,
     }).then(json),
 
+  // Transcribe + summarize a recording message; returns the updated message.
+  summarizeMessage: async (id: string): Promise<{ message: Message }> => {
+    const r = await fetch(`/api/messages/${id}/summarize`, { method: "POST" });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+    return data;
+  },
+
   // source: "calendar" => when meeting ends; "delay" => "Remind me in…"
   scheduleReminder: (
     forUserId: string,

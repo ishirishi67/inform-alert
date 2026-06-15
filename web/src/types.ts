@@ -20,5 +20,6 @@ export interface Message {
   body: string;
   kind: "text" | "quick_reply" | "recording";
   mediaUrl?: string; // for kind: "recording"
+  summary?: string; // AI summary of a recording, once generated
   createdAt: number;
 }

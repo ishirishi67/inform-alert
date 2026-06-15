@@ -169,6 +169,10 @@ export function App() {
       else if (type === "call:recording") setRemoteRecording(!!payload.on);
       else if (type === "message:new")
         setMessages((m) => [...m, payload as Message]);
+      else if (type === "message:update")
+        setMessages((m) =>
+          m.map((x) => (x.id === (payload as Message).id ? (payload as Message) : x))
+        );
       else if (type === "reminder:callback")
         setToast(`⏰ Time to call ${payload.callBack?.name ?? "back"}`);
     });
@@ -313,6 +317,11 @@ export function App() {
     setMessages((m) => [...m, message]);
   };
 
+  const summarizeMessage = async (id: string) => {
+    const { message } = await api.summarizeMessage(id);
+    setMessages((m) => m.map((x) => (x.id === message.id ? message : x)));
+  };
+
   return (
     <div className="app">
       <header>
@@ -361,7 +370,13 @@ export function App() {
 
         <section className="thread">
           {active ? (
-            <Chat me={me} other={active} messages={messages} onSend={send} />
+            <Chat
+              me={me}
+              other={active}
+              messages={messages}
+              onSend={send}
+              onSummarize={summarizeMessage}
+            />
           ) : (
             <p className="empty">Pick someone to call or message.</p>
           )}
@@ -474,11 +489,13 @@ function Chat({
   other,
   messages,
   onSend,
+  onSummarize,
 }: {
   me: User;
   other: User;
   messages: Message[];
   onSend: (body: string) => void;
+  onSummarize: (id: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
   return (
@@ -493,10 +510,7 @@ function Chat({
             className={`bubble ${m.senderId === me.id ? "mine" : ""}`}
           >
             {m.kind === "recording" ? (
-              <>
-                <video src={m.mediaUrl} controls className="msg-video" />
-                {m.body && <div>{m.body}</div>}
-              </>
+              <RecordingMessage m={m} onSummarize={onSummarize} />
             ) : (
               <>
                 {m.kind === "quick_reply" ? "⚡ " : ""}
@@ -515,6 +529,45 @@ function Chat({
         />
         <button onClick={() => (onSend(text), setText(""))}>Send</button>
       </div>
+    </>
+  );
+}
+
+function RecordingMessage({
+  m,
+  onSummarize,
+}: {
+  m: Message;
+  onSummarize: (id: string) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await onSummarize(m.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't summarize");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <>
+      <video src={m.mediaUrl} controls className="msg-video" />
+      {m.body && <div>{m.body}</div>}
+      {m.summary ? (
+        <div className="summary">
+          <strong>✨ Summary</strong>
+          <div>{m.summary}</div>
+        </div>
+      ) : (
+        <button className="chip summarize-btn" disabled={loading} onClick={run}>
+          {loading ? "Summarizing…" : "✨ Summarize"}
+        </button>
+      )}
+      {error && <div className="summary-error">{error}</div>}
     </>
   );
 }

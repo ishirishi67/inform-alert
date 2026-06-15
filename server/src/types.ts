@@ -43,6 +43,7 @@ export interface Message {
   body: string;
   kind: MessageKind;
   mediaUrl?: string; // for kind: "recording" — URL of the uploaded call recording
+  summary?: string; // AI summary of a recording, once generated
   createdAt: number;
 }
 

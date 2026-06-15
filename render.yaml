@@ -23,3 +23,10 @@ services:
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
+      # AI call-summary keys (set in the Render dashboard). GROQ_API_KEY powers
+      # Whisper transcription (free tier); ANTHROPIC_API_KEY powers the Claude
+      # summary. Without them, the "Summarize" button returns a friendly error.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
