@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "InformAlert",
+    "slug": "inform-alert",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "informalert",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ishirishi.informalert"
+    },
+    "android": {
+      "package": "com.ishirishi.informalert",
+      "adaptiveIcon": {
+        "backgroundColor": "#00a884",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
