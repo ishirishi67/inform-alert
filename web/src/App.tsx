@@ -343,7 +343,7 @@ export function App() {
         </button>
       </header>
 
-      <main>
+      <main className={view === "activity" || active ? "show-thread" : "show-list"}>
         <aside>
           <div
             className={`member activity-link ${view === "activity" ? "selected" : ""}`}
@@ -390,6 +390,17 @@ export function App() {
         </aside>
 
         <section className="thread">
+          {(view === "activity" || active) && (
+            <button
+              className="mobile-back link"
+              onClick={() => {
+                setActive(null);
+                setView("chat");
+              }}
+            >
+              ‹ Family
+            </button>
+          )}
           {view === "activity" ? (
             <ActivityPanel me={me} />
           ) : active ? (
