@@ -114,6 +114,13 @@ aside h3 { color: var(--muted); }
 .summary { margin-top: 6px; background: rgba(0,0,0,.28); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
 .summary strong { display: block; margin-bottom: 4px; color: var(--accent); }
 .summary-error { margin-top: 6px; color: var(--busy); font-size: 12px; }
+.transcript { margin-top: 6px; }
+.transcript-toggle { font-size: 12px; padding: 0; }
+.transcript-body {
+  margin-top: 4px; background: rgba(0,0,0,.28); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.5; color: var(--text);
+  max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+}
 
 /* History & To-dos panel */
 .activity-link { font-weight: 600; margin-bottom: 8px; }

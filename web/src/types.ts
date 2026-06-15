@@ -21,6 +21,7 @@ export interface Message {
   kind: "text" | "quick_reply" | "recording";
   mediaUrl?: string; // for kind: "recording"
   summary?: string; // AI summary of a recording, once generated
+  transcript?: string; // full speech-to-text of a recording
   createdAt: number;
 }
 

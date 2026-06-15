@@ -18,6 +18,7 @@ export interface Message {
   kind: "text" | "quick_reply" | "recording";
   mediaUrl?: string;
   summary?: string;
+  transcript?: string;
   createdAt: number;
 }
 

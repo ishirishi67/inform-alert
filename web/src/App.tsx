@@ -660,6 +660,7 @@ function RecordingMessage({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTranscript, setShowTranscript] = useState(false);
   const run = async () => {
     setLoading(true);
     setError(null);
@@ -684,6 +685,17 @@ function RecordingMessage({
         <button className="chip summarize-btn" disabled={loading} onClick={run}>
           {loading ? "Summarizing…" : "✨ Summarize"}
         </button>
+      )}
+      {m.transcript && (
+        <div className="transcript">
+          <button
+            className="link transcript-toggle"
+            onClick={() => setShowTranscript((s) => !s)}
+          >
+            📄 {showTranscript ? "Hide transcript" : "Show transcript"}
+          </button>
+          {showTranscript && <div className="transcript-body">{m.transcript}</div>}
+        </div>
       )}
       {error && <div className="summary-error">{error}</div>}
     </>

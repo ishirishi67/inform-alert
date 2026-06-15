@@ -226,19 +226,7 @@ function ChatScreen({
             ]}
           >
             {item.kind === "recording" ? (
-              <View>
-                <Pressable
-                  onPress={() =>
-                    item.mediaUrl && Linking.openURL(BASE + item.mediaUrl)
-                  }
-                >
-                  <Text style={styles.bubbleText}>🎥  Play recording</Text>
-                </Pressable>
-                {!!item.body && <Text style={styles.bubbleText}>{item.body}</Text>}
-                {!!item.summary && (
-                  <Text style={styles.summaryText}>✨ {item.summary}</Text>
-                )}
-              </View>
+              <RecordingBubble m={item} />
             ) : (
               <Text style={styles.bubbleText}>
                 {item.kind === "quick_reply" ? "⚡ " : ""}
@@ -262,6 +250,31 @@ function ChatScreen({
           <Text style={styles.sendBtnText}>Send</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function RecordingBubble({ m }: { m: Message }) {
+  const [showTranscript, setShowTranscript] = useState(false);
+  return (
+    <View>
+      <Pressable onPress={() => m.mediaUrl && Linking.openURL(BASE + m.mediaUrl)}>
+        <Text style={styles.bubbleText}>🎥  Play recording</Text>
+      </Pressable>
+      {!!m.body && <Text style={styles.bubbleText}>{m.body}</Text>}
+      {!!m.summary && <Text style={styles.summaryText}>✨ {m.summary}</Text>}
+      {!!m.transcript && (
+        <View>
+          <Pressable onPress={() => setShowTranscript((s) => !s)}>
+            <Text style={styles.transcriptToggle}>
+              📄 {showTranscript ? "Hide transcript" : "Show transcript"}
+            </Text>
+          </Pressable>
+          {showTranscript && (
+            <Text style={styles.transcriptBody}>{m.transcript}</Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -419,6 +432,16 @@ const styles = StyleSheet.create({
   bubbleTheirs: { backgroundColor: "#202c33", alignSelf: "flex-start" },
   bubbleText: { color: "#e9edef", fontSize: 15 },
   summaryText: { color: "#cfe9e0", fontSize: 13, marginTop: 6, lineHeight: 18 },
+  transcriptToggle: { color: "#00a884", fontSize: 12, marginTop: 6 },
+  transcriptBody: {
+    color: "#cdd6db",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderRadius: 8,
+    padding: 8,
+  },
   errorText: { color: "#e57373", fontSize: 13, marginTop: 6 },
   composer: {
     flexDirection: "row",
