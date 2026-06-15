@@ -30,12 +30,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function q(text: string, params: unknown[] = []) {
   if (!pool) throw new Error("no database");
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // ~9s total budget — enough for a scaled-to-zero Neon endpoint to wake up so a
+  // single request (e.g. a recording upload) succeeds without the user retrying.
+  const TRIES = 6;
+  for (let attempt = 0; attempt < TRIES; attempt++) {
     try {
       return await pool.query(text, params);
     } catch (e) {
       lastErr = e;
-      if (attempt < 2) await sleep(800);
+      if (attempt < TRIES - 1) await sleep(1500);
     }
   }
   throw lastErr;
