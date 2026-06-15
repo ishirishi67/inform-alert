@@ -100,13 +100,15 @@ export function App() {
     setToast("Sending recording…");
     try {
       const { url: mediaUrl } = await api.uploadRecording(blob);
-      await api.sendMessage(
+      const { message } = await api.sendMessage(
         me.id,
         peer.id,
         note.trim() || "📹 Call recording",
         "recording",
         mediaUrl
       );
+      // Show it in my own thread too (so the sender sees it was sent).
+      setMessages((m) => [...m, message]);
       setToast(`Recording sent to ${peer.name}`);
     } catch {
       setToast("Couldn't send the recording");

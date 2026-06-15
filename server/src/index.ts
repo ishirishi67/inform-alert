@@ -36,6 +36,15 @@ import {
 
 initPush();
 
+// Safety net: a stray async error (e.g. a transient DB blip) should be logged,
+// never take the whole server down.
+process.on("unhandledRejection", (reason) =>
+  console.error("[unhandledRejection]", reason)
+);
+process.on("uncaughtException", (err) =>
+  console.error("[uncaughtException]", err)
+);
+
 // Load any persisted data into the in-memory working set on boot. A database
 // failure must NOT crash the server — it falls back to in-memory and logs why.
 if (dbEnabled) {
@@ -152,15 +161,30 @@ app.post(
     const buf = req.body as Buffer;
     if (!buf || !buf.length) return res.status(400).json({ error: "empty" });
     const recId = id("rec");
-    await saveRecording(recId, buf, String(req.headers["content-type"] || "video/webm"));
-    res.json({ url: `/api/recordings/${recId}` });
+    try {
+      await saveRecording(
+        recId,
+        buf,
+        String(req.headers["content-type"] || "video/webm")
+      );
+      res.json({ url: `/api/recordings/${recId}` });
+    } catch (err: any) {
+      console.error("[recordings] save failed:", err?.message ?? err);
+      res.status(500).json({ error: "couldn't store the recording" });
+    }
   }
 );
 
 // Serve a recording with HTTP range support — <video>/<audio> elements need
 // 206 Partial Content responses to play and seek reliably.
 app.get("/api/recordings/:id", async (req, res) => {
-  const rec = await getRecordingBuffer(req.params.id);
+  let rec;
+  try {
+    rec = await getRecordingBuffer(req.params.id);
+  } catch (err: any) {
+    console.error("[recordings] fetch failed:", err?.message ?? err);
+    return res.status(500).end();
+  }
   if (!rec) return res.status(404).end();
   const { buffer, mime } = rec;
   const total = buffer.length;

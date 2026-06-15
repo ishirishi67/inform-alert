@@ -15,8 +15,31 @@ const url = raw
 
 export const dbEnabled = !!url;
 const pool = url
-  ? new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5 })
+  ? new pg.Pool({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      connectionTimeoutMillis: 15000, // give a sleeping Neon endpoint time to wake
+    })
   : null;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Query with a couple of retries — a free Neon instance "scales to zero" and the
+// first query after it sleeps can fail while it spins back up.
+async function q(text: string, params: unknown[] = []) {
+  if (!pool) throw new Error("no database");
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await pool.query(text, params);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await sleep(800);
+    }
+  }
+  throw lastErr;
+}
 
 // True only once the connection succeeded and tables exist. Recording storage and
 // the /api/health diagnostic key off this, NOT off "a URL was configured".
@@ -53,9 +76,9 @@ export async function loadAll(): Promise<{
 }> {
   if (!pool) return { calls: [], messages: [], todos: [] };
   const [c, m, t] = await Promise.all([
-    pool.query("SELECT * FROM calls ORDER BY started_at ASC"),
-    pool.query("SELECT * FROM messages ORDER BY created_at ASC"),
-    pool.query("SELECT * FROM todos ORDER BY generated_at ASC"),
+    q("SELECT * FROM calls ORDER BY started_at ASC"),
+    q("SELECT * FROM messages ORDER BY created_at ASC"),
+    q("SELECT * FROM todos ORDER BY generated_at ASC"),
   ]);
   return {
     calls: c.rows.map((r) => ({
@@ -93,46 +116,40 @@ const warn = (label: string) => (e: Error) =>
 
 export function persistCall(c: Call): void {
   if (!pool) return;
-  pool
-    .query(
-      `INSERT INTO calls (id,caller_id,callee_id,type,status,started_at,ended_at)
+  q(
+    `INSERT INTO calls (id,caller_id,callee_id,type,status,started_at,ended_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (id) DO UPDATE SET status=$5, ended_at=$7`,
-      [c.id, c.callerId, c.calleeId, c.type, c.status, c.startedAt, c.endedAt ?? null]
-    )
-    .catch(warn("persistCall"));
+    [c.id, c.callerId, c.calleeId, c.type, c.status, c.startedAt, c.endedAt ?? null]
+  ).catch(warn("persistCall"));
 }
 
 export function persistMessage(m: Message): void {
   if (!pool) return;
-  pool
-    .query(
-      `INSERT INTO messages (id,thread_id,sender_id,body,kind,media_url,summary,transcript,created_at)
+  q(
+    `INSERT INTO messages (id,thread_id,sender_id,body,kind,media_url,summary,transcript,created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (id) DO UPDATE SET summary=$7, transcript=$8`,
-      [
-        m.id,
-        m.threadId,
-        m.senderId,
-        m.body,
-        m.kind,
-        m.mediaUrl ?? null,
-        m.summary ?? null,
-        m.transcript ?? null,
-        m.createdAt,
-      ]
-    )
-    .catch(warn("persistMessage"));
+    [
+      m.id,
+      m.threadId,
+      m.senderId,
+      m.body,
+      m.kind,
+      m.mediaUrl ?? null,
+      m.summary ?? null,
+      m.transcript ?? null,
+      m.createdAt,
+    ]
+  ).catch(warn("persistMessage"));
 }
 
 export function persistTodo(t: WeeklyTodo): void {
   if (!pool) return;
-  pool
-    .query(
-      `INSERT INTO todos (id,user_id,generated_at,week_start,content) VALUES ($1,$2,$3,$4,$5)`,
-      [t.id, t.userId, t.generatedAt, t.weekStart, t.content]
-    )
-    .catch(warn("persistTodo"));
+  q(
+    `INSERT INTO todos (id,user_id,generated_at,week_start,content) VALUES ($1,$2,$3,$4,$5)`,
+    [t.id, t.userId, t.generatedAt, t.weekStart, t.content]
+  ).catch(warn("persistTodo"));
 }
 
 // --- Recordings stored as bytes (durable + playable across restarts) ---------
@@ -142,23 +159,23 @@ export async function dbSaveRecording(
   mime: string
 ): Promise<void> {
   if (!pool) return;
-  await pool.query(
-    "INSERT INTO recordings (id,mime,data,created_at) VALUES ($1,$2,$3,$4)",
-    [id, mime, buffer, Date.now()]
-  );
+  await q("INSERT INTO recordings (id,mime,data,created_at) VALUES ($1,$2,$3,$4)", [
+    id,
+    mime,
+    buffer,
+    Date.now(),
+  ]);
   // Keep only the most recent 30 to bound free-tier storage.
-  await pool
-    .query(
-      "DELETE FROM recordings WHERE id NOT IN (SELECT id FROM recordings ORDER BY created_at DESC LIMIT 30)"
-    )
-    .catch(warn("prune recordings"));
+  q(
+    "DELETE FROM recordings WHERE id NOT IN (SELECT id FROM recordings ORDER BY created_at DESC LIMIT 30)"
+  ).catch(warn("prune recordings"));
 }
 
 export async function dbGetRecording(
   id: string
 ): Promise<{ buffer: Buffer; mime: string } | null> {
   if (!pool) return null;
-  const r = await pool.query("SELECT mime, data FROM recordings WHERE id=$1", [id]);
+  const r = await q("SELECT mime, data FROM recordings WHERE id=$1", [id]);
   if (!r.rows.length) return null;
   return { buffer: r.rows[0].data as Buffer, mime: r.rows[0].mime as string };
 }
